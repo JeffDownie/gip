@@ -9,14 +9,17 @@ var DAGLink = DAG.DAGLink;
 var DAGNode = DAG.DAGNode;
 var through = require('through2');
 
-module.exports = (hash) => {
+module.exports = (fsHash) => {
     findGipDir((err, dir) => {
         if(err) return console.error(err);
-        ipfs.get(hash, (err, data) => {
+        ipfs.get(fsHash, (err, data) => {
+            if(err) return console.error(err);
+            data.on('end', () => {
+                console.log('checked out' + fsHash);
+            });
             data.pipe(through.obj((file, enc, next) => {
-                if(file.path === hash) return next();
+                if(file.path === fsHash) return next();
                 file.path = file.path.substring(file.path.indexOf('/') + 1);
-                console.log(file.path)
                 if(!file.content) {
                     fs.mkdir(file.path, () => {
                         return next();
@@ -25,8 +28,6 @@ module.exports = (hash) => {
                 }
                 file.content.on('end', next);
                 file.content.pipe(fs.createWriteStream(file.path));
-            }, () => {
-                console.log('checked out ' + hash);
             }));
         });
     });
