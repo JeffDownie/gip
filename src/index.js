@@ -15,25 +15,6 @@ const getIPFSObject = CB.CBify(ipfs.object.get);
 const readFile = CB.CBify(fs.readFile);
 const statFile = CB.CBify(fs.stat);
 
-program
-    .command('commit')
-    .action(commit);
-
-program
-    .command('init')
-    .action(init);
-
-program
-    .command('checkout', '<hash>')
-    .action(checkout);
-
-program
-    .command('clone', '<name> <hash>')
-    .action(clone);
-
-program
-    .parse(process.argv);
-
 const findGipDir = CB.CBify((originalDir, cb) => {
     const dir = path.normalize(path.resolve(originalDir) + '/');
     fs.stat(dir + '.gip', (err, stats) => {
@@ -50,6 +31,13 @@ const getCommit = findGipDir
     .map(commit => commit.toString())
     .compose(getIPFSObject);
 
+//getRepo :: CB workingDir repoObject
+const getRepo = findGipDir
+    .map(dir => dir + '/.gip/repo')
+    .compose(readFile)
+    .map(repo => repo.toString())
+    .compose(getIPFSObject);
+
 const updateRepo = CB.CBify((commitNode, cb) => {
     findGipDir(process.cwd(), (err, dir) => {
         DAGLink.create('master', commitNode.size, commitNode.multihash, (err, headCommitLink) => {
@@ -61,7 +49,6 @@ const updateRepo = CB.CBify((commitNode, cb) => {
         });
     });
 });
-
 
 const init = () => {
     DAGNode.create('Initial commit', [], (err, initialCommitNode) => {
@@ -142,3 +129,48 @@ const checkout = (fsHash) => {
         });
     });
 };
+
+const branch = (newName) => {
+    findGipDir(process.cwd(), (err, dir) => {
+        getRepo(process.cwd(), (err, repo) => {
+            getCommit(process.cwd(), (err, commit) => {
+                if(err) return console.error(err);
+                DAGLink.create(newName, commit.size, commit.multihash, (err, commitLink) => {
+                    console.log(repo.data);
+                    DAGNode.addLink(repo, commitLink, (err, newRepo) => {
+                        ipfs.object.put(newRepo, (err) => {
+                            fs.writeFile(dir + '/.gip/repo', newRepo.toJSON().multihash, (err) => {
+                                fs.writeFile(dir + '/.gip/commit', commit.toJSON().multihash, (err) => {
+                                    console.log('Created branch ' + newName);
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+};
+
+program
+    .command('commit')
+    .action(commit);
+
+program
+    .command('init')
+    .action(init);
+
+program
+    .command('checkout', '<hash>')
+    .action(checkout);
+
+program
+    .command('clone', '<name> <hash>')
+    .action(clone);
+
+program
+    .command('branch', '<branchName>')
+    .action(branch);
+
+program
+    .parse(process.argv);
